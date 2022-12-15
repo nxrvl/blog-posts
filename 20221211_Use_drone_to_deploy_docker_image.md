@@ -14,8 +14,7 @@ ogImage: ""
 description:
   
 ---
-
-# Using drone to deploy docker image
+# Using Drone to deploy docker image via ssh
 
 For my small pet project to learn about RabbitMQ I also wanted to create CI/CD pipeline using Drone on my home server. So I have two very simple microservice written in Python. One of them every day calculates how many days past since I meet my girlfriend and sends this information to RabbitMQ queue. The second one reads this information from the queue and sends it to Telegram chat.
 
@@ -28,7 +27,7 @@ So basically, my pipeline should do the following after pushing code to Gitea:
 3. Push docker image to private Nexus docker registry
 4. Deploy docker image to the same server.
 
-## 1. Set up drone config. 
+## 1. Set up drone config
 
 Drone stores all pipelines in .drone.yml file. This file should be in the root of your repository. I have two repositories for my microservices. So I have two .drone.yml files. They are very similar, so I'll focus on one of them.
 
@@ -84,9 +83,49 @@ If you deploy to a production server, you probably will use Kubernetes or someth
 
 First of all I put Nexus credentials to secrets in Drone web-interface. I also added to secrets information needed to start Docker image with all the settings. It will pass inside as ENV variables.
 
-Also we need to execute some shell commands. I will 
+Here step by step description of `script` section of `.drone.yml` file:
 
-So basic configuration looks this way:
+I need this to correctly run docker commands:
+
+```yaml
+- export PATH="/usr/local/bin:$PATH"
+```
+
+Here we create environment file with all the ENV variables and pass values from secrets. I decided to store all my config values in one key item, because it have a lot of values and it will be easier to manage it in this way.
+
+```yaml
+- touch env.config
+- echo $ENV_VAR >> env.config
+```
+
+Here we authorize in Nexus registry using values from secrets and pull the latest image. To make it more universal it can be rewritten to use repository address, docker image name and tag from secrets.
+
+```yaml
+- docker login -u $NEXUS_USER -p $NEXUS_PASSWORD 100.90.71.128:8082
+- docker pull 100.90.71.128:8082/nax/days_count:latest
+```
+
+Here we stop and remove old container and image. It is needed to run new container with new image. Also we remove all stopped containers and unused images. But it is not necessary. It is just for cleaning up.
+
+```yaml
+- docker image prune -f
+- docker stop days_count
+- docker container prune -f
+```
+
+Here we run new container with all the ENV variables and timezone. Also we set restart policy to always. So if the server will be rebooted, the container will start automatically.
+
+```yaml
+- docker run -d --env-file env.config -v /etc/localtime:/etc/localtime:ro --restart always --name days_count 100.90.71.128:8082/nax/days_count:latest
+```
+
+And finally, we remove environment file. It is not needed anymore.
+
+```yaml
+- rm env.config
+```
+
+So the final config looks like this:
 
 ```yaml
 - name: deploy-ssh
@@ -119,3 +158,9 @@ So basic configuration looks this way:
         - docker run -d --env-file env.config -v /etc/localtime:/etc/localtime:ro --restart always --name days_count 100.90.71.128:8082/nax/days_count:latest
         - rm env.config
 ```
+
+All the code could be found in my GitHub repository.
+
+- [Microservice in Python to send data](https://github.com/naxrevlis/days_count.git)
+- [Microservice in Python to send message to Telegram](https://github.com/naxrevlis/nx-telegram-bot.git)
+- [Config files to run different services](https://github.com/naxrevlis/devops.git)
