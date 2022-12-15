@@ -4,7 +4,7 @@ datetime: 2022-12-11 15:24:21
 title: Deploying docker image with drone
 slug: deploying-docker-image-with-drone
 featured: true
-draft: true
+draft: false
 tags:
   - docker
   - drone
